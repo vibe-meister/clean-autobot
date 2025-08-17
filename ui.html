@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShineSprint Cleaning — Instant Estimate</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#1E90FF;
+    --accent:#00C389;
+    --dark:#0F172A;
+    --light:#F8FAFC;
+    --warn:#F59E0B;
+  }
+  body {
+    margin:0; font-family:Inter,sans-serif; background:var(--light); color:var(--dark);
+  }
+  .wrap {
+    max-width:480px; margin:24px auto; padding:20px; background:#fff;
+    border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,0.1);
+  }
+  h1 {
+    font-family:Poppins; font-weight:700; font-size:28px; margin-bottom:12px; color:var(--primary);
+    text-align:center;
+  }
+  p.lead { font-size:16px; color:#334155; text-align:center; margin-bottom:24px; }
+  label { display:block; margin-top:14px; font-weight:600; }
+  input, select, textarea {
+    width:100%; padding:12px; margin-top:6px; border-radius:10px; border:1px solid #d1d5db; font-size:16px;
+  }
+  .addons input { width:auto; margin-right:6px; }
+  .btn {
+    display:block; width:100%; text-align:center; margin-top:20px;
+    padding:14px; font-weight:700; font-size:16px; border:none; border-radius:12px;
+    background:linear-gradient(135deg, var(--primary), var(--accent)); color:#fff; cursor:pointer;
+  }
+  .price { margin-top:18px; font-size:20px; font-weight:700; color:var(--primary); text-align:center; }
+  .thankyou { text-align:center; font-size:18px; font-weight:600; color:var(--accent); margin-top:24px; display:none; }
+  @media (max-width:500px){
+    .wrap { margin:12px; padding:16px; }
+    h1 { font-size:24px; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ShineSprint Cleaning</h1>
+    <p class="lead">Book in 60 seconds. Sparkle by tomorrow.</p>
+    <form id="leadForm">
+      <label>Name</label><input type="text" name="name" required>
+      <label>Email</label><input type="email" name="email" required>
+      <label>Phone</label><input type="tel" name="phone" required>
+      <label>Address</label><input type="text" name="address" required>
+      <label>Zip</label><input type="text" name="zip" required>
+      <label>Home Size</label>
+      <select name="homeSize" required>
+        <option value="studio">Studio/1 Bed</option>
+        <option value="2bed">2 Bedroom</option>
+        <option value="3bed">3 Bedroom</option>
+      </select>
+      <label>Frequency</label>
+      <select name="frequency" required>
+        <option value="one_time">One-Time</option>
+        <option value="weekly">Weekly</option>
+        <option value="biweekly">Bi-Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+      <label>Add-ons (comma separated)</label><input type="text" name="addons" placeholder="deep_clean, fridge, oven">
+      <label>Preferred Date</label><input type="date" name="preferredDate">
+      <label>Notes</label><textarea name="notes" rows="3"></textarea>
+      <div class="price" id="estPrice"></div>
+      <button type="submit" class="btn">Submit Lead</button>
+      <div class="thankyou" id="thankyouMsg">Thank you! Your request has been submitted.</div>
+    </form>
+  </div>
+<script>
+  const form = document.getElementById('leadForm');
+  const estPriceDiv = document.getElementById('estPrice');
+  const thankyou = document.getElementById('thankyouMsg');
+
+  // Update estimate dynamically when fields change
+  const updateEstimate = () => {
+    const data = Object.fromEntries(new FormData(form).entries());
+    data.addons = data.addons ? data.addons.split(',').map(a=>a.trim()) : [];
+    google.script.run.withSuccessHandler(res => {
+      estPriceDiv.innerText = 'Estimated Price: $' + res.estimate.price;
+    }).estimate(data);
+  };
+
+  form.addEventListener('input', updateEstimate);
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(form).entries());
+    data.addons = data.addons ? data.addons.split(',').map(a=>a.trim()) : [];
+    google.script.run.withSuccessHandler(res => {
+      estPriceDiv.innerText = 'Estimated Price: $' + res.estimate.price;
+      form.reset();
+      thankyou.style.display = 'block';
+      setTimeout(() => { thankyou.style.display = 'none'; }, 5000);
+    }).createLead(data);
+  });
+
+  // Initial estimate on page load
+  updateEstimate();
+</script>
+</body>
+</html>

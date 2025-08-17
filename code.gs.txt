@@ -1,0 +1,116 @@
+/************************************
+ * ShineSprint Cleaning — Web Lead Form + Bid Requests
+ ************************************/
+
+const SHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+const SHEET = SpreadsheetApp.openById(SHEET_ID);
+
+function getSheet(name) { return SHEET.getSheetByName(name); }
+
+// --- Required for web app ---
+function doGet() {
+  return HtmlService.createTemplateFromFile('ui')
+    .evaluate()
+    .setTitle('ShineSprint — Instant Estimate')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// --- Fetch config for form display ---
+function getPublicConfig() {
+  const cfgSheet = getSheet('Settings');
+  const cfg = {};
+  if (cfgSheet) {
+    const data = cfgSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      cfg[data[i][0]] = data[i][1];
+    }
+  }
+  return {
+    brand: cfg.BrandName || 'ShineSprint Cleaning',
+    colors: { primary: '#1E90FF', accent: '#00C389', dark: '#0F172A', light: '#F8FAFC' }
+  };
+}
+
+// --- Pricing fetch ---
+function getPricing() {
+  const sh = getSheet('Pricing');
+  const rows = sh.getDataRange().getValues();
+  const headers = rows.shift();
+  return rows.map(r => ({
+    Category: r[0], Key: r[1], Label: r[2], BasePrice: Number(r[3] || 0), AddonPrice: Number(r[4] || 0)
+  }));
+}
+
+// --- Estimate calculation ---
+function estimate(payload) {
+  const pricing = getPricing();
+  const find = (cat, key) => pricing.find(p => p.Category === cat && p.Key === key);
+  const base = find('home_size', payload.homeSize);
+  if (!base) throw new Error('Invalid home size');
+  let price = base.BasePrice;
+
+  const freq = find('frequency', payload.frequency);
+  if (freq) price += Number(freq.BasePrice || 0);
+
+  (payload.addons || []).forEach(a => {
+    const ad = find('addon', a);
+    if (ad) price += Number(ad.AddonPrice || 0);
+  });
+
+  if (price < 79) price = 79;
+  return { price: Math.round(price), currency: 'USD' };
+}
+
+// --- Create lead in sheet ---
+function createLead(payload) {
+  const sh = getSheet('Leads');
+  const id = 'L' + new Date().getTime();
+  const est = estimate(payload);
+
+  const row = [
+    new Date(), id, payload.name, payload.email, payload.phone, payload.address, payload.zip,
+    payload.homeSize, payload.frequency, (payload.addons || []).join(','), payload.notes || '',
+    est.price, payload.preferredDate || '', 'New'
+  ];
+  sh.appendRow(row);
+
+  // Automatically send bid requests after lead is added
+  sendBidRequests(id, est.price, payload);
+
+  return { ok: true, leadId: id, estimate: est };
+}
+
+// --- Send bid requests to all vendors ---
+function sendBidRequests(leadID, estPrice, payload) {
+  const vendorsSheet = getSheet('Vendors');
+  if (!vendorsSheet) return;
+
+  const vendors = vendorsSheet.getDataRange().getValues().slice(1);
+  const minBid = Math.round(estPrice * 0.7);
+
+  vendors.forEach(vendor => {
+    const email = vendor[1]; // Vendor email column
+    if (email) {
+      const jobDetails = `
+LeadID: ${leadID}
+Home Size: ${payload.homeSize}
+Add-ons: ${(payload.addons || []).join(', ') || 'None'}
+Preferred Date: ${payload.preferredDate || 'Flexible'}
+Minimum Bid: $${minBid}
+      `;
+      try {
+        GmailApp.sendEmail(email, `New Bid Request — Lead ${leadID}`, jobDetails);
+      } catch(e) { Logger.log(e); }
+    }
+  });
+
+  // Mark the lead as "Bids Sent"
+  const leadsSheet = getSheet('Leads');
+  const leadsData = leadsSheet.getDataRange().getValues();
+  for (let i = 1; i < leadsData.length; i++) {
+    if (leadsData[i][1] === leadID) { // Match LeadID
+      leadsSheet.getRange(i + 1, 14).setValue('Bids Sent'); // Status column
+      break;
+    }
+  }
+}
